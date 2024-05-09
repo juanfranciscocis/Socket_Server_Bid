@@ -14,6 +14,13 @@ const bidding_model = require('../../model/bidding_model')
  */
 io.on('connection', (client) => {
     console.log('Client connected ' + client.id);
+    active_auction_painting_id = null;
+    time = 5
+    io.emit('get-paintings',{
+        type:'success',
+        text:'Paintings',
+        bidding_model
+    })
 
     /**
      * This event is emitted to all connected clients when the 'get-paintings' event is received from a client.
@@ -94,6 +101,24 @@ io.on('connection', (client) => {
     });
 
     /**
+     * @event client.on('active-auction')
+     */
+    client.on('active-auction',()=>{
+        console.log("active-auction check")
+        if (active_auction_painting_id){
+            io.emit('active-auction',{
+                active:true,
+                painting_id: active_auction_painting_id
+            })
+        }else {
+            io.emit('active-auction',{
+                active:false,
+                painting_id: null
+            })
+        }
+    });
+
+    /**
      * This event is triggered when a client disconnects from the server.
      * The function logs the id of the disconnected client.
      *
@@ -105,7 +130,6 @@ io.on('connection', (client) => {
 
 });
 
-
 /**
  * Starts a timer for a specific painting's bid. The timer is set to 5 seconds.
  * When the timer reaches 0, the painting is marked as sold and a 'new-bid' event is emitted with a 'bid_timeout' type.
@@ -114,18 +138,42 @@ io.on('connection', (client) => {
  * @param {string} id - The id of the painting.
  */
 const startTimer = (id) => {
-    let time = 5
+    if(active_auction_painting_id && id == active_auction_painting_id){
+        console.log("New bit in Auction")
+        time = 5
+        return;
+    }
+    active_auction_painting_id = id
     let timer = setInterval(()=>{
+        io.emit('active-auction',{
+            active:true,
+            timer:time,
+            painting_id: active_auction_painting_id
+        })
+        
         time--
         if (time === 0){
             clearInterval(timer)
             let painting = bidding_model[id]
             painting.isSold = true
+            io.emit('active-auction',{
+                active:false,
+                timer:time,
+                active_auction_painting_id:null
+            })
+            io.emit('get-paintings',{
+                type:'success',
+                text:'Paintings',
+                bidding_model
+            })
+            
             io.emit('new-bid',{
                 type:'bid_timeout',
                 text:'Bid time is over for painting id ' + painting.id,
                 painting
             })
+            time = 5;
+            active_auction_painting_id = null;
         }
     },1000)
 }
